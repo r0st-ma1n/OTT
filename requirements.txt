@@ -1,0 +1,3 @@
+# This repository does not use Python package dependencies.
+# Kept intentionally empty to satisfy deployment/publishing workflows
+# that expect a requirements.txt file.
