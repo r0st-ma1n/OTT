@@ -11,7 +11,6 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include <array>
-#include <functional>
 
 //==============================================================================
 class S3xtaOTTAudioProcessorEditor  : public juce::AudioProcessorEditor,
@@ -56,7 +55,6 @@ private:
     {
     public:
         BipolarGRMeterComponent();
-        void setRange (float maxUpDbIn = 18.0f, float maxDownDbAbsIn = 24.0f);
         void setValuesDb (float upDb, float downDb);
         void paint (juce::Graphics& g) override;
 
@@ -72,34 +70,28 @@ private:
     public:
         StereoOutputMeterComponent();
         void setLevelsDb (float leftDb, float rightDb, bool clipLatch);
-        std::function<void()> onClipClicked;
         void paint (juce::Graphics& g) override;
-        void mouseUp (const juce::MouseEvent&) override;
 
     private:
         float smoothL = -100.0f;
         float smoothR = -100.0f;
         bool clip = false;
-        juce::Rectangle<int> clipBounds;
     };
 
     class AnalyzerComponent : public juce::Component
     {
     public:
         AnalyzerComponent (S3xtaOTTAudioProcessor& proc);
-        void setPost (bool isPost) { post = isPost; }
         void updateData();
         void paint (juce::Graphics& g) override;
 
     private:
         S3xtaOTTAudioProcessor& processor;
-        bool post = false;
         std::array<float, FFTDataGenerator::fftSize / 2> fftData {};
         bool hasData = false;
     };
 
     void timerCallback() override;
-    void applyAdvancedLayout();
     void layoutAdvancedPanel (juce::Rectangle<int> area);
 
     S3xtaOTTAudioProcessor& audioProcessor;
@@ -123,8 +115,6 @@ private:
     juce::ToggleButton soloMid;
     juce::ToggleButton soloHigh;
 
-    juce::TextButton preButton { "PRE" };
-
     juce::Label lowLabel;
     juce::Label midLabel;
     juce::Label highLabel;
@@ -141,8 +131,6 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloMidAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloHighAttach;
 
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outAttach;
-
     BipolarGRMeterComponent grLow;
     BipolarGRMeterComponent grMid;
     BipolarGRMeterComponent grHigh;
@@ -152,7 +140,6 @@ private:
     juce::Component advancedPanel;
 
     bool advancedVisible = false;
-    bool analyzerPostMode = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (S3xtaOTTAudioProcessorEditor)
-};
+ };

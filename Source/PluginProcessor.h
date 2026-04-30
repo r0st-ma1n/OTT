@@ -29,16 +29,12 @@ class EnvelopeFollower
 {
 public:
     void prepare (double sampleRate);
-    void setAttackRelease (float attackMs, float releaseMs);
-    float processSample (float input);
+    float processSample (float input, float attackCoeff, float releaseCoeff);
 
     void reset() { env = 0.0f; }
 
 private:
-    double sr = 44100.0;
     float env = 0.0f;
-    float attackCoeff = 0.0f;
-    float releaseCoeff = 0.0f;
 };
 
 //==============================================================================
@@ -48,17 +44,16 @@ public:
     void prepare (double sampleRate, int channels);
     void reset();
 
-    void setDetectorParams (float attackMs, float releaseMs, float stereoLink01);
-    void setAmount (float drive);
-    void process (juce::AudioBuffer<float>& buffer, float bandTrimDb,
+    void process (juce::AudioBuffer<float>& buffer,
+                  const float* driveValues,
+                  const float* attackCoeffValues,
+                  const float* releaseCoeffValues,
+                  const float* stereoLinkValues,
+                  const float* bandTrimValues,
                   std::atomic<float>& upMeterDb, std::atomic<float>& downMeterDb);
 
 private:
-    double sr = 44100.0;
     int numChannels = 2;
-
-    float drive = 0.5f;
-    float stereoLink = 1.0f;
 
     EnvelopeFollower linkedEnv;
     std::vector<EnvelopeFollower> envs;
@@ -75,7 +70,9 @@ public:
     void process (const juce::AudioBuffer<float>& input,
                   juce::AudioBuffer<float>& low,
                   juce::AudioBuffer<float>& mid,
-                  juce::AudioBuffer<float>& high);
+                  juce::AudioBuffer<float>& high,
+                  const float* f1Values,
+                  const float* f2Values);
 
 private:
     double sr = 44100.0;
@@ -169,18 +166,15 @@ public:
     APVTS& getAPVTS() { return apvts; }
     MeterState& getMeterState() { return meters; }
     const MeterState& getMeterState() const { return meters; }
-    void resetClip() { meters.clipped.store (false, std::memory_order_relaxed); }
-
     bool getPreFFTData (std::array<float, FFTDataGenerator::fftSize / 2>& dest) const;
-    bool getPostFFTData (std::array<float, FFTDataGenerator::fftSize / 2>& dest) const;
 
     static APVTS::ParameterLayout createParameterLayout();
 
 private:
     //==============================================================================
     void updateSmoothedTargets();
-    void updateCrossoverFrequencies();
     void updateSoloTargets();
+    void ensureSmoothingBufferSize (int numSamples);
 
     //==============================================================================
     APVTS apvts;
@@ -197,7 +191,6 @@ private:
     UpDownCompressorBand highComp;
 
     AnalyzerFIFO preAnalyzer;
-    AnalyzerFIFO postAnalyzer;
 
     int maxBlockSize = 0;
     double lastSampleRate = 44100.0;
@@ -205,11 +198,33 @@ private:
     juce::LinearSmoothedValue<float> amountSmoothed;
     juce::LinearSmoothedValue<float> mixSmoothed;
     juce::LinearSmoothedValue<float> outSmoothed;
+    juce::LinearSmoothedValue<float> timeSmoothed;
     juce::LinearSmoothedValue<float> f1Smoothed;
     juce::LinearSmoothedValue<float> f2Smoothed;
+    juce::LinearSmoothedValue<float> stereoLinkSmoothed;
+    juce::LinearSmoothedValue<float> attackMsSmoothed;
+    juce::LinearSmoothedValue<float> releaseMsSmoothed;
+    juce::LinearSmoothedValue<float> lowTrimSmoothed;
+    juce::LinearSmoothedValue<float> midTrimSmoothed;
+    juce::LinearSmoothedValue<float> highTrimSmoothed;
     juce::LinearSmoothedValue<float> soloLowSmoothed;
     juce::LinearSmoothedValue<float> soloMidSmoothed;
     juce::LinearSmoothedValue<float> soloHighSmoothed;
+
+    std::vector<float> driveValues;
+    std::vector<float> mixValues;
+    std::vector<float> outGainValues;
+    std::vector<float> f1Values;
+    std::vector<float> f2Values;
+    std::vector<float> stereoLinkValues;
+    std::vector<float> attackCoeffValues;
+    std::vector<float> releaseCoeffValues;
+    std::vector<float> lowTrimValues;
+    std::vector<float> midTrimValues;
+    std::vector<float> highTrimValues;
+    std::vector<float> soloLowValues;
+    std::vector<float> soloMidValues;
+    std::vector<float> soloHighValues;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (S3xtaOTTAudioProcessor)
 };

@@ -58,19 +58,6 @@ void S3xtaOTTAudioProcessorEditor::OttLookAndFeel::drawRotarySlider (juce::Graph
     g.setColour (accent);
     g.strokePath (valueArc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    juce::Path ticks;
-    const int tickCount = 34;
-    for (int i = 0; i <= tickCount; ++i)
-    {
-        float a = rotaryStartAngle + (float) i / (float) tickCount * (rotaryEndAngle - rotaryStartAngle);
-        float r1 = radius + 13.0f;
-        float r2 = radius + 17.0f;
-        ticks.startNewSubPath (centre.x + std::cos (a) * r1, centre.y + std::sin (a) * r1);
-        ticks.lineTo (centre.x + std::cos (a) * r2, centre.y + std::sin (a) * r2);
-    }
-    g.setColour (juce::Colour (0x335c667d));
-    g.strokePath (ticks, juce::PathStrokeType (1.0f));
-
     juce::Path pointerTrack;
     pointerTrack.startNewSubPath (centre.x, centre.y);
     pointerTrack.lineTo (centre.x, centre.y - radius + 8.0f);
@@ -98,23 +85,7 @@ void S3xtaOTTAudioProcessorEditor::OttLookAndFeel::drawToggleButton (juce::Graph
     g.drawText (button.getButtonText(), button.getLocalBounds(), juce::Justification::centred);
 }
 
-//==============================================================================
-static void styleSegmentButton (juce::TextButton& b)
-{
-    b.setColour (juce::TextButton::buttonColourId, juce::Colour (0x33262d3a));
-    b.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0x66455166));
-    b.setColour (juce::TextButton::textColourOffId, juce::Colour (0xffaeb5c2));
-    b.setColour (juce::TextButton::textColourOnId, juce::Colour (0xffe7ebf3));
-}
-
-//==============================================================================
 S3xtaOTTAudioProcessorEditor::BipolarGRMeterComponent::BipolarGRMeterComponent() = default;
-
-void S3xtaOTTAudioProcessorEditor::BipolarGRMeterComponent::setRange (float maxUpDbIn, float maxDownDbAbsIn)
-{
-    maxUpDb = juce::jmax (1.0f, maxUpDbIn);
-    maxDownDbAbs = juce::jmax (1.0f, maxDownDbAbsIn);
-}
 
 void S3xtaOTTAudioProcessorEditor::BipolarGRMeterComponent::setValuesDb (float upDb, float downDb)
 {
@@ -209,7 +180,7 @@ void S3xtaOTTAudioProcessorEditor::StereoOutputMeterComponent::paint (juce::Grap
     drawBar (leftArea, smoothL);
     drawBar (rightArea, smoothR);
 
-    clipBounds = juce::Rectangle<int> ((int) r.getCentreX() - 18, (int) r.getBottom() - 20, 36, 14);
+    auto clipBounds = juce::Rectangle<int> ((int) r.getCentreX() - 18, (int) r.getBottom() - 20, 36, 14);
     g.setColour (clip ? juce::Colour (0xffd96aa5) : juce::Colour (0xff202739));
     g.fillRoundedRectangle (clipBounds.toFloat(), 4.0f);
     g.setColour (clip ? juce::Colour (0xffffd6ea) : juce::Colour (0xff9ea8bf));
@@ -220,14 +191,6 @@ void S3xtaOTTAudioProcessorEditor::StereoOutputMeterComponent::paint (juce::Grap
     g.drawRoundedRectangle (r.reduced (0.5f), 5.0f, 1.0f);
 }
 
-void S3xtaOTTAudioProcessorEditor::StereoOutputMeterComponent::mouseUp (const juce::MouseEvent& e)
-{
-    if (clipBounds.contains (e.getPosition()))
-        if (onClipClicked)
-            onClipClicked();
-}
-
-//==============================================================================
 S3xtaOTTAudioProcessorEditor::AnalyzerComponent::AnalyzerComponent (S3xtaOTTAudioProcessor& proc)
     : processor (proc)
 {
@@ -235,13 +198,7 @@ S3xtaOTTAudioProcessorEditor::AnalyzerComponent::AnalyzerComponent (S3xtaOTTAudi
 
 void S3xtaOTTAudioProcessorEditor::AnalyzerComponent::updateData()
 {
-    bool ok = false;
-    if (post)
-        ok = processor.getPostFFTData (fftData);
-    else
-        ok = processor.getPreFFTData (fftData);
-
-    hasData = ok;
+    hasData = processor.getPreFFTData (fftData);
 }
 
 void S3xtaOTTAudioProcessorEditor::AnalyzerComponent::paint (juce::Graphics& g)
@@ -388,9 +345,6 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
     soloLow.setButtonText ("LOW");
     soloMid.setButtonText ("MID");
     soloHigh.setButtonText ("HIGH");
-    soloLow.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffbdbdbd));
-    soloMid.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffbdbdbd));
-    soloHigh.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffbdbdbd));
     soloLow.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xffe6e6e6));
     soloMid.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xffe6e6e6));
     soloHigh.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xffe6e6e6));
@@ -460,21 +414,6 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
     addAndMakeVisible (outMeter);
     addAndMakeVisible (analyzer);
 
-    preButton.setClickingTogglesState (true);
-    styleSegmentButton (preButton);
-    preButton.setButtonText ("PRE");
-    preButton.setToggleState (false, juce::dontSendNotification);
-    preButton.onClick = [this]
-    {
-        analyzerPostMode = preButton.getToggleState();
-        analyzer.setPost (analyzerPostMode);
-        preButton.setButtonText (analyzerPostMode ? "POST" : "PRE");
-        preButton.setToggleState (analyzerPostMode, juce::dontSendNotification);
-    };
-
-    addAndMakeVisible (preButton);
-    preButton.setVisible (false);
-
     styleLabel (lowLabel);
     lowLabel.setText ("LOW", juce::dontSendNotification);
     styleLabel (midLabel);
@@ -507,11 +446,6 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
     leftColumn.setInterceptsMouseClicks (false, false);
     centerColumn.setInterceptsMouseClicks (false, false);
     rightColumn.setInterceptsMouseClicks (false, false);
-
-    outMeter.onClipClicked = [this]
-    {
-        audioProcessor.resetClip();
-    };
 
     styleKnob (f1Knob.slider); styleLabel (f1Knob.label); f1Knob.label.setText ("F1", juce::dontSendNotification);
     styleKnob (f2Knob.slider); styleLabel (f2Knob.label); f2Knob.label.setText ("F2", juce::dontSendNotification);
@@ -687,12 +621,9 @@ void S3xtaOTTAudioProcessorEditor::resized()
         layoutBand (highArea, highLabel, grHigh, soloHigh);
     }
 
-    // Center column: PRE/POST toggle + analyzer
+    // Center column: analyzer
     {
         auto centerArea = centerColumn.getBounds().reduced (juce::jmax (3, w / 240), juce::jmax (6, h / 70));
-        auto header = centerArea.removeFromTop (juce::jmax (18, h / 26));
-        auto prePostArea = header.removeFromLeft (juce::jmax (68, w / 11)).reduced (2, 2);
-        preButton.setBounds (prePostArea);
         analyzer.setBounds (centerArea);
     }
 
@@ -713,14 +644,6 @@ void S3xtaOTTAudioProcessorEditor::resized()
     {
         layoutAdvancedPanel (advArea);
     }
-}
-
-void S3xtaOTTAudioProcessorEditor::applyAdvancedLayout()
-{
-    if (advancedVisible)
-        setSize (708, 552);
-    else
-        setSize (708, 456);
 }
 
 void S3xtaOTTAudioProcessorEditor::layoutAdvancedPanel (juce::Rectangle<int> area)
@@ -780,5 +703,4 @@ void S3xtaOTTAudioProcessorEditor::timerCallback()
     grMid.repaint();
     grHigh.repaint();
     outMeter.repaint();
-    preButton.repaint();
 }

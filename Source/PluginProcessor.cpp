@@ -13,37 +13,56 @@
 //==============================================================================
 static float dbToGain (float db) { return juce::Decibels::decibelsToGain (db); }
 static float gainToDb (float gain) { return juce::Decibels::gainToDecibels (gain, -120.0f); }
+static float msToCoeff (float ms, double sampleRate)
+{
+    ms = juce::jmax (0.01f, ms);
+    return std::exp (-1.0f / (0.001f * ms * static_cast<float> (sampleRate)));
+}
+static float amountToDrive (float amount01)
+{
+    amount01 = juce::jlimit (0.0f, 1.5f, amount01);
+
+    // Keep the first half controllable and make the top end more exciting.
+    const float base = std::pow (amount01, 1.35f) * 1.7f;
+    const float excitement = std::pow (juce::jmax (0.0f, amount01 - 0.72f) / 0.78f, 2.0f) * 0.65f;
+    return juce::jlimit (0.0f, 2.8f, base + excitement);
+}
+
+static void timeToAttackRelease (float timeMs, float attackMsBase, float releaseMsBase,
+                                 float& attackMsOut, float& releaseMsOut)
+{
+    const float tNorm = juce::jlimit (0.0f, 1.0f, (timeMs - 1.0f) / 499.0f);
+
+    // More useful control in the fast region, broader spread in the slow region.
+    const float attackMacro = 0.45f + std::pow (tNorm, 0.62f) * 1.85f;
+    const float releaseMacro = 0.55f + std::pow (tNorm, 0.78f) * 2.75f;
+
+    attackMsOut = juce::jlimit (0.05f, 35.0f, attackMsBase * attackMacro);
+    releaseMsOut = juce::jlimit (8.0f, 1600.0f, releaseMsBase * releaseMacro);
+}
 
 //==============================================================================
 void EnvelopeFollower::prepare (double sampleRate)
 {
-    sr = sampleRate;
+    juce::ignoreUnused (sampleRate);
     reset();
 }
 
-void EnvelopeFollower::setAttackRelease (float attackMs, float releaseMs)
+float EnvelopeFollower::processSample (float input, float attackCoeff, float releaseCoeff)
 {
-    attackMs = juce::jmax (0.01f, attackMs);
-    releaseMs = juce::jmax (0.01f, releaseMs);
-    attackCoeff = std::exp (-1.0f / (0.001f * attackMs * static_cast<float> (sr)));
-    releaseCoeff = std::exp (-1.0f / (0.001f * releaseMs * static_cast<float> (sr)));
-}
-
-float EnvelopeFollower::processSample (float input)
-{
-    const float x = std::abs (input);
+    // Use a power detector for smoother OTT-style action than raw peak tracking.
+    const float x = input * input;
     if (x > env)
         env = attackCoeff * env + (1.0f - attackCoeff) * x;
     else
         env = releaseCoeff * env + (1.0f - releaseCoeff) * x;
 
-    return env;
+    return std::sqrt (juce::jmax (env, 0.0f));
 }
 
 //==============================================================================
 void UpDownCompressorBand::prepare (double sampleRate, int channels)
 {
-    sr = sampleRate;
     numChannels = channels;
     envs.resize (static_cast<size_t> (channels));
     for (auto& env : envs)
@@ -58,29 +77,18 @@ void UpDownCompressorBand::reset()
         env.reset();
 }
 
-void UpDownCompressorBand::setDetectorParams (float attackMs, float releaseMs, float stereoLink01)
-{
-    stereoLink = juce::jlimit (0.0f, 1.0f, stereoLink01);
-    linkedEnv.setAttackRelease (attackMs, releaseMs);
-    for (auto& env : envs)
-        env.setAttackRelease (attackMs, releaseMs);
-}
-
-void UpDownCompressorBand::setAmount (float newDrive)
-{
-    drive = juce::jlimit (0.0f, 2.8f, newDrive);
-}
-
-void UpDownCompressorBand::process (juce::AudioBuffer<float>& buffer, float bandTrimDb,
+void UpDownCompressorBand::process (juce::AudioBuffer<float>& buffer,
+                                    const float* driveValues,
+                                    const float* attackCoeffValues,
+                                    const float* releaseCoeffValues,
+                                    const float* stereoLinkValues,
+                                    const float* bandTrimValues,
                                     std::atomic<float>& upMeterDb, std::atomic<float>& downMeterDb)
 {
-    constexpr float thresholdDb = -30.0f;
-    constexpr float downRatio = 10.0f;
-    constexpr float upRatio = 0.25f;
-    constexpr float maxUpDb = 30.0f;
-
-    const float downScale = drive;
-    const float upScale = drive;
+    constexpr float thresholdDb = -24.0f;
+    constexpr float downRatio = 12.0f;
+    constexpr float upRatio = 0.35f;
+    constexpr float maxUpDb = 24.0f;
 
     const int samples = buffer.getNumSamples();
     const int channels = buffer.getNumChannels();
@@ -94,12 +102,20 @@ void UpDownCompressorBand::process (juce::AudioBuffer<float>& buffer, float band
         for (int ch = 0; ch < channels; ++ch)
             linkedLevel = juce::jmax (linkedLevel, std::abs (buffer.getReadPointer (ch)[i]));
 
-        float linkedEnvVal = linkedEnv.processSample (linkedLevel);
+        const float attackCoeff = attackCoeffValues[i];
+        const float releaseCoeff = releaseCoeffValues[i];
+        const float stereoLink = stereoLinkValues[i];
+        const float drive = driveValues[i];
+        const float bandTrimDb = bandTrimValues[i];
+        const float downScale = juce::jlimit (0.0f, 2.6f, drive * 0.92f);
+        const float upScale = juce::jlimit (0.0f, 3.1f, drive * 1.18f);
+
+        float linkedEnvVal = linkedEnv.processSample (linkedLevel, attackCoeff, releaseCoeff);
 
         for (int ch = 0; ch < channels; ++ch)
         {
             float x = buffer.getWritePointer (ch)[i];
-            float env = envs[(size_t) ch].processSample (x);
+            float env = envs[(size_t) ch].processSample (x, attackCoeff, releaseCoeff);
             float usedEnv = juce::jmap (stereoLink, env, linkedEnvVal);
 
             const float levelDb = gainToDb (usedEnv + 1.0e-9f);
@@ -163,31 +179,31 @@ void Crossover3Band::setFrequencies (float f1, float f2)
 void Crossover3Band::process (const juce::AudioBuffer<float>& input,
                               juce::AudioBuffer<float>& low,
                               juce::AudioBuffer<float>& mid,
-                              juce::AudioBuffer<float>& high)
+                              juce::AudioBuffer<float>& high,
+                              const float* f1Values,
+                              const float* f2Values)
 {
     const int channels = input.getNumChannels();
     const int samples = input.getNumSamples();
 
-    for (int ch = 0; ch < channels; ++ch)
+    for (int i = 0; i < samples; ++i)
     {
-        const float* in = input.getReadPointer (ch);
-        float* lowOut = low.getWritePointer (ch);
-        float* midOut = mid.getWritePointer (ch);
-        float* highOut = high.getWritePointer (ch);
+        setFrequencies (f1Values[i], f2Values[i]);
 
-        for (int i = 0; i < samples; ++i)
+        for (int ch = 0; ch < channels; ++ch)
         {
+            const float in = input.getReadPointer (ch)[i];
             float lowSample = 0.0f;
             float highSample = 0.0f;
-            split1.processSample (ch, in[i], lowSample, highSample);
+            split1.processSample (ch, in, lowSample, highSample);
 
             float midSample = 0.0f;
             float highSample2 = 0.0f;
             split2.processSample (ch, highSample, midSample, highSample2);
 
-            lowOut[i] = lowSample;
-            midOut[i] = midSample;
-            highOut[i] = highSample2;
+            low.getWritePointer (ch)[i] = lowSample;
+            mid.getWritePointer (ch)[i] = midSample;
+            high.getWritePointer (ch)[i] = highSample2;
         }
     }
 }
@@ -338,20 +354,55 @@ void S3xtaOTTAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     highComp.prepare (sampleRate, channels);
 
     preAnalyzer.prepare (sampleRate);
-    postAnalyzer.prepare (sampleRate);
 
     amountSmoothed.reset (sampleRate, 0.03);
     mixSmoothed.reset (sampleRate, 0.03);
     outSmoothed.reset (sampleRate, 0.03);
+    timeSmoothed.reset (sampleRate, 0.04);
     f1Smoothed.reset (sampleRate, 0.05);
     f2Smoothed.reset (sampleRate, 0.05);
+    stereoLinkSmoothed.reset (sampleRate, 0.04);
+    attackMsSmoothed.reset (sampleRate, 0.04);
+    releaseMsSmoothed.reset (sampleRate, 0.04);
+    lowTrimSmoothed.reset (sampleRate, 0.03);
+    midTrimSmoothed.reset (sampleRate, 0.03);
+    highTrimSmoothed.reset (sampleRate, 0.03);
 
     soloLowSmoothed.reset (sampleRate, 0.008);
     soloMidSmoothed.reset (sampleRate, 0.008);
     soloHighSmoothed.reset (sampleRate, 0.008);
 
-    updateSmoothedTargets();
-    updateSoloTargets();
+    amountSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("amount")->load() * 0.01f);
+    mixSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("mix")->load());
+    outSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("out_gain_db")->load());
+    timeSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("time_ms")->load());
+    f1Smoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("xover_f1_hz")->load());
+    f2Smoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("xover_f2_hz")->load());
+    stereoLinkSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("stereo_link")->load() * 0.01f);
+    attackMsSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("attack_ms")->load());
+    releaseMsSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("release_ms")->load());
+    lowTrimSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("low_gain_db")->load());
+    midTrimSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("mid_gain_db")->load());
+    highTrimSmoothed.setCurrentAndTargetValue (apvts.getRawParameterValue ("high_gain_db")->load());
+
+    const bool soloLow = apvts.getRawParameterValue ("solo_low")->load() > 0.5f;
+    const bool soloMid = apvts.getRawParameterValue ("solo_mid")->load() > 0.5f;
+    const bool soloHigh = apvts.getRawParameterValue ("solo_high")->load() > 0.5f;
+
+    float lowTarget = 1.0f;
+    float midTarget = 1.0f;
+    float highTarget = 1.0f;
+
+    if (soloLow || soloMid || soloHigh)
+    {
+        lowTarget = soloLow ? 1.0f : 0.0f;
+        midTarget = (! soloLow && soloMid) ? 1.0f : 0.0f;
+        highTarget = (! soloLow && ! soloMid && soloHigh) ? 1.0f : 0.0f;
+    }
+
+    soloLowSmoothed.setCurrentAndTargetValue (lowTarget);
+    soloMidSmoothed.setCurrentAndTargetValue (midTarget);
+    soloHighSmoothed.setCurrentAndTargetValue (highTarget);
 }
 
 void S3xtaOTTAudioProcessor::releaseResources() {}
@@ -399,50 +450,53 @@ void S3xtaOTTAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     }
 
     updateSmoothedTargets();
-    updateCrossoverFrequencies();
     updateSoloTargets();
+    ensureSmoothingBufferSize (buffer.getNumSamples());
 
-    const float amount = amountSmoothed.getNextValue();
-    const float mix = mixSmoothed.getNextValue() * 0.01f;
-    const float outGain = dbToGain (outSmoothed.getNextValue());
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+    {
+        const float amount = amountSmoothed.getNextValue();
+        const float mix = mixSmoothed.getNextValue() * 0.01f;
+        const float outDb = outSmoothed.getNextValue();
+        const float timeMs = timeSmoothed.getNextValue();
+        const float attackMs = attackMsSmoothed.getNextValue();
+        const float releaseMs = releaseMsSmoothed.getNextValue();
+        float attack = 0.0f;
+        float release = 0.0f;
 
-    const float timeMs = apvts.getRawParameterValue ("time_ms")->load();
-    const float attackMs = apvts.getRawParameterValue ("attack_ms")->load();
-    const float releaseMs = apvts.getRawParameterValue ("release_ms")->load();
-    const float stereoLink = apvts.getRawParameterValue ("stereo_link")->load() * 0.01f;
+        driveValues[(size_t) i] = amountToDrive (amount);
+        mixValues[(size_t) i] = mix;
+        outGainValues[(size_t) i] = dbToGain (outDb);
+        f1Values[(size_t) i] = f1Smoothed.getNextValue();
+        f2Values[(size_t) i] = f2Smoothed.getNextValue();
+        stereoLinkValues[(size_t) i] = stereoLinkSmoothed.getNextValue();
 
-    const float macro = timeMs / 95.0f;
-    const float attack = juce::jlimit (0.05f, 35.0f, attackMs * macro);
-    const float release = juce::jlimit (5.0f, 1200.0f, releaseMs * macro);
+        timeToAttackRelease (timeMs, attackMs, releaseMs, attack, release);
+        attackCoeffValues[(size_t) i] = msToCoeff (attack, lastSampleRate);
+        releaseCoeffValues[(size_t) i] = msToCoeff (release, lastSampleRate);
 
-    const float drive = juce::jlimit (0.0f, 2.8f, std::pow (amount, 2.0f) * 1.35f);
-
-    const float lowTrim = apvts.getRawParameterValue ("low_gain_db")->load();
-    const float midTrim = apvts.getRawParameterValue ("mid_gain_db")->load();
-    const float highTrim = apvts.getRawParameterValue ("high_gain_db")->load();
+        lowTrimValues[(size_t) i] = lowTrimSmoothed.getNextValue();
+        midTrimValues[(size_t) i] = midTrimSmoothed.getNextValue();
+        highTrimValues[(size_t) i] = highTrimSmoothed.getNextValue();
+        soloLowValues[(size_t) i] = soloLowSmoothed.getNextValue();
+        soloMidValues[(size_t) i] = soloMidSmoothed.getNextValue();
+        soloHighValues[(size_t) i] = soloHighSmoothed.getNextValue();
+    }
 
     for (int ch = 0; ch < totalNumInputChannels; ++ch)
         juce::FloatVectorOperations::copy (dryBuffer.getWritePointer (ch), buffer.getReadPointer (ch), buffer.getNumSamples());
 
     preAnalyzer.pushSamples (buffer.getReadPointer (0), buffer.getNumSamples());
 
-    crossover.process (buffer, lowBuffer, midBuffer, highBuffer);
+    crossover.process (buffer, lowBuffer, midBuffer, highBuffer,
+                       f1Values.data(), f2Values.data());
 
-    lowComp.setDetectorParams (attack, release, stereoLink);
-    midComp.setDetectorParams (attack, release, stereoLink);
-    highComp.setDetectorParams (attack, release, stereoLink);
-
-    lowComp.setAmount (drive);
-    midComp.setAmount (drive);
-    highComp.setAmount (drive);
-
-    lowComp.process (lowBuffer, lowTrim, meters.bandUpGRdB[0], meters.bandDownGRdB[0]);
-    midComp.process (midBuffer, midTrim, meters.bandUpGRdB[1], meters.bandDownGRdB[1]);
-    highComp.process (highBuffer, highTrim, meters.bandUpGRdB[2], meters.bandDownGRdB[2]);
-
-    const float soloLow = soloLowSmoothed.getNextValue();
-    const float soloMid = soloMidSmoothed.getNextValue();
-    const float soloHigh = soloHighSmoothed.getNextValue();
+    lowComp.process (lowBuffer, driveValues.data(), attackCoeffValues.data(), releaseCoeffValues.data(),
+                     stereoLinkValues.data(), lowTrimValues.data(), meters.bandUpGRdB[0], meters.bandDownGRdB[0]);
+    midComp.process (midBuffer, driveValues.data(), attackCoeffValues.data(), releaseCoeffValues.data(),
+                     stereoLinkValues.data(), midTrimValues.data(), meters.bandUpGRdB[1], meters.bandDownGRdB[1]);
+    highComp.process (highBuffer, driveValues.data(), attackCoeffValues.data(), releaseCoeffValues.data(),
+                      stereoLinkValues.data(), highTrimValues.data(), meters.bandUpGRdB[2], meters.bandDownGRdB[2]);
 
     for (int ch = 0; ch < totalNumInputChannels; ++ch)
     {
@@ -452,7 +506,9 @@ void S3xtaOTTAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         auto* dst = buffer.getWritePointer (ch);
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
-            dst[i] = low[i] * soloLow + mid[i] * soloMid + high[i] * soloHigh;
+            dst[i] = low[i] * soloLowValues[(size_t) i]
+                   + mid[i] * soloMidValues[(size_t) i]
+                   + high[i] * soloHighValues[(size_t) i];
     }
 
     for (int ch = 0; ch < totalNumInputChannels; ++ch)
@@ -460,10 +516,15 @@ void S3xtaOTTAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         auto* wet = buffer.getWritePointer (ch);
         auto* dry = dryBuffer.getReadPointer (ch);
         for (int i = 0; i < buffer.getNumSamples(); ++i)
-            wet[i] = dry[i] * (1.0f - mix) + wet[i] * mix;
+            wet[i] = dry[i] * (1.0f - mixValues[(size_t) i]) + wet[i] * mixValues[(size_t) i];
     }
 
-    buffer.applyGain (outGain);
+    for (int ch = 0; ch < totalNumInputChannels; ++ch)
+    {
+        auto* wet = buffer.getWritePointer (ch);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            wet[i] *= outGainValues[(size_t) i];
+    }
 
     float peakL = 0.0f;
     float peakR = 0.0f;
@@ -478,10 +539,8 @@ void S3xtaOTTAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const float peakRDb = juce::Decibels::gainToDecibels (peakR, -100.0f);
     meters.outPeakL_dBFS.store (peakLDb, std::memory_order_relaxed);
     meters.outPeakR_dBFS.store (peakRDb, std::memory_order_relaxed);
-    if (peakL >= 1.0f || peakR >= 1.0f)
-        meters.clipped.store (true, std::memory_order_relaxed);
-
-    postAnalyzer.pushSamples (buffer.getReadPointer (0), buffer.getNumSamples());
+    const bool isClipping = (peakL >= 1.0f || peakR >= 1.0f);
+    meters.clipped.store (isClipping, std::memory_order_relaxed);
 }
 
 //==============================================================================
@@ -512,32 +571,33 @@ bool S3xtaOTTAudioProcessor::getPreFFTData (std::array<float, FFTDataGenerator::
     return preAnalyzer.getLatestFFTData (dest);
 }
 
-bool S3xtaOTTAudioProcessor::getPostFFTData (std::array<float, FFTDataGenerator::fftSize / 2>& dest) const
-{
-    return postAnalyzer.getLatestFFTData (dest);
-}
-
-//==============================================================================
 void S3xtaOTTAudioProcessor::updateSmoothedTargets()
 {
     const float amount = apvts.getRawParameterValue ("amount")->load() * 0.01f;
     const float mix = apvts.getRawParameterValue ("mix")->load();
     const float outDb = apvts.getRawParameterValue ("out_gain_db")->load();
+    const float timeMs = apvts.getRawParameterValue ("time_ms")->load();
     const float f1 = apvts.getRawParameterValue ("xover_f1_hz")->load();
     const float f2 = apvts.getRawParameterValue ("xover_f2_hz")->load();
+    const float stereoLink = apvts.getRawParameterValue ("stereo_link")->load() * 0.01f;
+    const float attackMs = apvts.getRawParameterValue ("attack_ms")->load();
+    const float releaseMs = apvts.getRawParameterValue ("release_ms")->load();
+    const float lowTrim = apvts.getRawParameterValue ("low_gain_db")->load();
+    const float midTrim = apvts.getRawParameterValue ("mid_gain_db")->load();
+    const float highTrim = apvts.getRawParameterValue ("high_gain_db")->load();
 
-    amountSmoothed.setCurrentAndTargetValue (amount);
-    mixSmoothed.setCurrentAndTargetValue (mix);
-    outSmoothed.setCurrentAndTargetValue (outDb);
-    f1Smoothed.setCurrentAndTargetValue (f1);
-    f2Smoothed.setCurrentAndTargetValue (f2);
-}
-
-void S3xtaOTTAudioProcessor::updateCrossoverFrequencies()
-{
-    const float f1 = f1Smoothed.getNextValue();
-    const float f2 = f2Smoothed.getNextValue();
-    crossover.setFrequencies (f1, f2);
+    amountSmoothed.setTargetValue (amount);
+    mixSmoothed.setTargetValue (mix);
+    outSmoothed.setTargetValue (outDb);
+    timeSmoothed.setTargetValue (timeMs);
+    f1Smoothed.setTargetValue (f1);
+    f2Smoothed.setTargetValue (f2);
+    stereoLinkSmoothed.setTargetValue (stereoLink);
+    attackMsSmoothed.setTargetValue (attackMs);
+    releaseMsSmoothed.setTargetValue (releaseMs);
+    lowTrimSmoothed.setTargetValue (lowTrim);
+    midTrimSmoothed.setTargetValue (midTrim);
+    highTrimSmoothed.setTargetValue (highTrim);
 }
 
 void S3xtaOTTAudioProcessor::updateSoloTargets()
@@ -557,9 +617,28 @@ void S3xtaOTTAudioProcessor::updateSoloTargets()
         highTarget = (! soloLow && ! soloMid && soloHigh) ? 1.0f : 0.0f;
     }
 
-    soloLowSmoothed.setCurrentAndTargetValue (lowTarget);
-    soloMidSmoothed.setCurrentAndTargetValue (midTarget);
-    soloHighSmoothed.setCurrentAndTargetValue (highTarget);
+    soloLowSmoothed.setTargetValue (lowTarget);
+    soloMidSmoothed.setTargetValue (midTarget);
+    soloHighSmoothed.setTargetValue (highTarget);
+}
+
+void S3xtaOTTAudioProcessor::ensureSmoothingBufferSize (int numSamples)
+{
+    const auto requiredSize = static_cast<size_t> (numSamples);
+    driveValues.resize (requiredSize);
+    mixValues.resize (requiredSize);
+    outGainValues.resize (requiredSize);
+    f1Values.resize (requiredSize);
+    f2Values.resize (requiredSize);
+    stereoLinkValues.resize (requiredSize);
+    attackCoeffValues.resize (requiredSize);
+    releaseCoeffValues.resize (requiredSize);
+    lowTrimValues.resize (requiredSize);
+    midTrimValues.resize (requiredSize);
+    highTrimValues.resize (requiredSize);
+    soloLowValues.resize (requiredSize);
+    soloMidValues.resize (requiredSize);
+    soloHighValues.resize (requiredSize);
 }
 
 //==============================================================================
@@ -568,11 +647,11 @@ S3xtaOTTAudioProcessor::APVTS::ParameterLayout S3xtaOTTAudioProcessor::createPar
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("amount", "Amount",
-        juce::NormalisableRange<float> (0.0f, 150.0f, 0.01f, 0.6f), 50.0f));
+        juce::NormalisableRange<float> (0.0f, 150.0f, 0.01f, 0.58f), 65.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("time_ms", "Time",
-        juce::NormalisableRange<float> (1.0f, 500.0f, 0.01f, 0.35f), 110.0f));
+        juce::NormalisableRange<float> (1.0f, 500.0f, 0.01f, 0.33f), 85.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("mix", "Mix",
-        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 50.0f));
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 100.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("out_gain_db", "Out Gain",
         juce::NormalisableRange<float> (-18.0f, 18.0f, 0.01f), 0.0f));
 
@@ -583,13 +662,13 @@ S3xtaOTTAudioProcessor::APVTS::ParameterLayout S3xtaOTTAudioProcessor::createPar
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("xover_f1_hz", "Xover F1",
         juce::NormalisableRange<float> (60.0f, 500.0f, 0.01f, 0.4f), 120.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("xover_f2_hz", "Xover F2",
-        juce::NormalisableRange<float> (800.0f, 8000.0f, 0.01f, 0.4f), 2000.0f));
+        juce::NormalisableRange<float> (800.0f, 8000.0f, 0.01f, 0.4f), 2500.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("stereo_link", "Stereo Link",
-        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 100.0f));
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 85.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("attack_ms", "Attack",
-        juce::NormalisableRange<float> (0.1f, 50.0f, 0.01f, 0.35f), 1.0f));
+        juce::NormalisableRange<float> (0.1f, 50.0f, 0.01f, 0.35f), 1.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("release_ms", "Release",
-        juce::NormalisableRange<float> (10.0f, 2000.0f, 0.01f, 0.35f), 150.0f));
+        juce::NormalisableRange<float> (10.0f, 2000.0f, 0.01f, 0.35f), 180.0f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("low_gain_db", "Low Gain",
         juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f));
