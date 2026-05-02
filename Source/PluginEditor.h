@@ -105,8 +105,10 @@ private:
     ParamKnob f1Knob;
     ParamKnob f2Knob;
     ParamKnob linkKnob;
+    ParamKnob balanceKnob;
     ParamKnob attackKnob;
     ParamKnob releaseKnob;
+    ParamKnob ceilingKnob;
     ParamKnob lowGainKnob;
     ParamKnob midGainKnob;
     ParamKnob highGainKnob;
@@ -114,12 +116,21 @@ private:
     juce::ToggleButton soloLow;
     juce::ToggleButton soloMid;
     juce::ToggleButton soloHigh;
+    juce::ToggleButton muteLow;
+    juce::ToggleButton muteMid;
+    juce::ToggleButton muteHigh;
 
     juce::Label lowLabel;
     juce::Label midLabel;
     juce::Label highLabel;
     juce::Label outLabel;
     juce::Label titleLabel;
+    juce::Label advancedTitleLabel;
+    juce::Label advancedDynamicsLabel;
+    juce::Label advancedOutputLabel;
+    juce::TextButton advancedButton;
+    juce::TextButton autoGainButton;
+    juce::TextButton softClipButton;
 
     Divider topDivider1;
     Divider topDivider2;
@@ -130,6 +141,11 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloLowAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloMidAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloHighAttach;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteLowAttach;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteMidAttach;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteHighAttach;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> autoGainAttach;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> softClipAttach;
 
     BipolarGRMeterComponent grLow;
     BipolarGRMeterComponent grMid;

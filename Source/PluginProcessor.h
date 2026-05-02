@@ -46,6 +46,7 @@ public:
 
     void process (juce::AudioBuffer<float>& buffer,
                   const float* driveValues,
+                  const float* balanceValues,
                   const float* attackCoeffValues,
                   const float* releaseCoeffValues,
                   const float* stereoLinkValues,
@@ -174,6 +175,7 @@ private:
     //==============================================================================
     void updateSmoothedTargets();
     void updateSoloTargets();
+    void updateBandListenTargets (bool useCurrentValues);
     void ensureSmoothingBufferSize (int numSamples);
 
     //==============================================================================
@@ -202,11 +204,18 @@ private:
     juce::LinearSmoothedValue<float> f1Smoothed;
     juce::LinearSmoothedValue<float> f2Smoothed;
     juce::LinearSmoothedValue<float> stereoLinkSmoothed;
+    juce::LinearSmoothedValue<float> balanceSmoothed;
     juce::LinearSmoothedValue<float> attackMsSmoothed;
     juce::LinearSmoothedValue<float> releaseMsSmoothed;
     juce::LinearSmoothedValue<float> lowTrimSmoothed;
     juce::LinearSmoothedValue<float> midTrimSmoothed;
     juce::LinearSmoothedValue<float> highTrimSmoothed;
+    juce::LinearSmoothedValue<float> autoGainBlendSmoothed;
+    juce::LinearSmoothedValue<float> softClipBlendSmoothed;
+    juce::LinearSmoothedValue<float> ceilingSmoothed;
+    juce::LinearSmoothedValue<float> muteLowSmoothed;
+    juce::LinearSmoothedValue<float> muteMidSmoothed;
+    juce::LinearSmoothedValue<float> muteHighSmoothed;
     juce::LinearSmoothedValue<float> soloLowSmoothed;
     juce::LinearSmoothedValue<float> soloMidSmoothed;
     juce::LinearSmoothedValue<float> soloHighSmoothed;
@@ -217,11 +226,17 @@ private:
     std::vector<float> f1Values;
     std::vector<float> f2Values;
     std::vector<float> stereoLinkValues;
+    std::vector<float> balanceValues;
     std::vector<float> attackCoeffValues;
     std::vector<float> releaseCoeffValues;
     std::vector<float> lowTrimValues;
     std::vector<float> midTrimValues;
     std::vector<float> highTrimValues;
+    std::vector<float> ceilingValues;
+    std::vector<float> softClipBlendValues;
+    std::vector<float> muteLowValues;
+    std::vector<float> muteMidValues;
+    std::vector<float> muteHighValues;
     std::vector<float> soloLowValues;
     std::vector<float> soloMidValues;
     std::vector<float> soloHighValues;

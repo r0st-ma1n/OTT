@@ -28,6 +28,33 @@ static void styleLabel (juce::Label& l)
     l.setColour (juce::Label::textColourId, juce::Colour (0xffc9ced8));
 }
 
+static void styleTextButton (juce::TextButton& b)
+{
+    b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff171d2a));
+    b.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff253046));
+    b.setColour (juce::TextButton::textColourOffId, juce::Colour (0xffc9ced8));
+    b.setColour (juce::TextButton::textColourOnId, juce::Colour (0xfff1c15b));
+}
+
+static void styleSectionLabel (juce::Label& l, float fontSize)
+{
+    styleLabel (l);
+    l.setJustificationType (juce::Justification::centredLeft);
+    l.setFont (juce::Font (juce::FontOptions (fontSize, juce::Font::bold)));
+    l.setColour (juce::Label::textColourId, juce::Colour (0xffd8ddea));
+}
+
+static void styleBandButton (juce::ToggleButton& b, juce::Colour activeColour)
+{
+    b.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xffe6e6e6));
+    b.setColour (juce::ToggleButton::tickDisabledColourId, juce::Colour (0xff2f2f2f));
+    b.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffbdbdbd));
+    b.onStateChange = [&b, activeColour]
+    {
+        b.setColour (juce::ToggleButton::textColourId, b.getToggleState() ? activeColour : juce::Colour (0xffbdbdbd));
+    };
+}
+
 //==============================================================================
 void S3xtaOTTAudioProcessorEditor::OttLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h,
                                                                       float sliderPos, const float rotaryStartAngle,
@@ -345,26 +372,24 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
     soloLow.setButtonText ("LOW");
     soloMid.setButtonText ("MID");
     soloHigh.setButtonText ("HIGH");
-    soloLow.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xffe6e6e6));
-    soloMid.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xffe6e6e6));
-    soloHigh.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xffe6e6e6));
-    soloLow.setColour (juce::ToggleButton::tickDisabledColourId, juce::Colour (0xff2f2f2f));
-    soloMid.setColour (juce::ToggleButton::tickDisabledColourId, juce::Colour (0xff2f2f2f));
-    soloHigh.setColour (juce::ToggleButton::tickDisabledColourId, juce::Colour (0xff2f2f2f));
-    soloLow.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffbdbdbd));
-    soloMid.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffbdbdbd));
-    soloHigh.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffbdbdbd));
+    muteLow.setButtonText ("M");
+    muteMid.setButtonText ("M");
+    muteHigh.setButtonText ("M");
+    styleBandButton (soloLow, juce::Colour (0xfff1c15b));
+    styleBandButton (soloMid, juce::Colour (0xfff1c15b));
+    styleBandButton (soloHigh, juce::Colour (0xfff1c15b));
+    styleBandButton (muteLow, juce::Colour (0xffd96aa5));
+    styleBandButton (muteMid, juce::Colour (0xffd96aa5));
+    styleBandButton (muteHigh, juce::Colour (0xffd96aa5));
 
-    auto setSoloColour = [](juce::ToggleButton& b)
+    auto refreshBandButtonColours = [this]
     {
-        auto active = b.getToggleState();
-        b.setColour (juce::ToggleButton::textColourId, active ? juce::Colour (0xfff1c15b) : juce::Colour (0xffbdbdbd));
-    };
-    auto refreshSoloColours = [this, setSoloColour]
-    {
-        setSoloColour (soloLow);
-        setSoloColour (soloMid);
-        setSoloColour (soloHigh);
+        soloLow.setColour (juce::ToggleButton::textColourId, soloLow.getToggleState() ? juce::Colour (0xfff1c15b) : juce::Colour (0xffbdbdbd));
+        soloMid.setColour (juce::ToggleButton::textColourId, soloMid.getToggleState() ? juce::Colour (0xfff1c15b) : juce::Colour (0xffbdbdbd));
+        soloHigh.setColour (juce::ToggleButton::textColourId, soloHigh.getToggleState() ? juce::Colour (0xfff1c15b) : juce::Colour (0xffbdbdbd));
+        muteLow.setColour (juce::ToggleButton::textColourId, muteLow.getToggleState() ? juce::Colour (0xffd96aa5) : juce::Colour (0xffbdbdbd));
+        muteMid.setColour (juce::ToggleButton::textColourId, muteMid.getToggleState() ? juce::Colour (0xffd96aa5) : juce::Colour (0xffbdbdbd));
+        muteHigh.setColour (juce::ToggleButton::textColourId, muteHigh.getToggleState() ? juce::Colour (0xffd96aa5) : juce::Colour (0xffbdbdbd));
     };
     auto makeExclusiveSolo = [this] (juce::ToggleButton& activeButton)
     {
@@ -379,23 +404,26 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
             soloHigh.setToggleState (false, juce::sendNotificationSync);
     };
 
-    soloLow.onClick = [this, refreshSoloColours, makeExclusiveSolo]
+    soloLow.onClick = [this, refreshBandButtonColours, makeExclusiveSolo]
     {
         makeExclusiveSolo (soloLow);
-        refreshSoloColours();
+        refreshBandButtonColours();
     };
-    soloMid.onClick = [this, refreshSoloColours, makeExclusiveSolo]
+    soloMid.onClick = [this, refreshBandButtonColours, makeExclusiveSolo]
     {
         makeExclusiveSolo (soloMid);
-        refreshSoloColours();
+        refreshBandButtonColours();
     };
-    soloHigh.onClick = [this, refreshSoloColours, makeExclusiveSolo]
+    soloHigh.onClick = [this, refreshBandButtonColours, makeExclusiveSolo]
     {
         makeExclusiveSolo (soloHigh);
-        refreshSoloColours();
+        refreshBandButtonColours();
     };
+    muteLow.onClick = [this, refreshBandButtonColours] { refreshBandButtonColours(); };
+    muteMid.onClick = [this, refreshBandButtonColours] { refreshBandButtonColours(); };
+    muteHigh.onClick = [this, refreshBandButtonColours] { refreshBandButtonColours(); };
 
-    refreshSoloColours();
+    refreshBandButtonColours();
 
     soloLowAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         audioProcessor.getAPVTS(), "solo_low", soloLow);
@@ -403,10 +431,19 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
         audioProcessor.getAPVTS(), "solo_mid", soloMid);
     soloHighAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         audioProcessor.getAPVTS(), "solo_high", soloHigh);
+    muteLowAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        audioProcessor.getAPVTS(), "mute_low", muteLow);
+    muteMidAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        audioProcessor.getAPVTS(), "mute_mid", muteMid);
+    muteHighAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        audioProcessor.getAPVTS(), "mute_high", muteHigh);
 
     addAndMakeVisible (soloLow);
     addAndMakeVisible (soloMid);
     addAndMakeVisible (soloHigh);
+    addAndMakeVisible (muteLow);
+    addAndMakeVisible (muteMid);
+    addAndMakeVisible (muteHigh);
 
     addAndMakeVisible (grLow);
     addAndMakeVisible (grMid);
@@ -438,6 +475,26 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
     addAndMakeVisible (highLabel);
     addAndMakeVisible (outLabel);
     addAndMakeVisible (titleLabel);
+    styleTextButton (autoGainButton);
+    autoGainButton.setButtonText ("AUTO GAIN");
+    autoGainAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        audioProcessor.getAPVTS(), "auto_gain", autoGainButton);
+    addAndMakeVisible (autoGainButton);
+    styleTextButton (softClipButton);
+    softClipButton.setButtonText ("SOFT CLIP");
+    softClipAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        audioProcessor.getAPVTS(), "soft_clip", softClipButton);
+    addAndMakeVisible (softClipButton);
+    styleTextButton (advancedButton);
+    advancedButton.setButtonText ("ADVANCED");
+    advancedButton.setClickingTogglesState (true);
+    advancedButton.onClick = [this]
+    {
+        advancedVisible = advancedButton.getToggleState();
+        advancedPanel.setVisible (advancedVisible);
+        setSize (getWidth(), advancedVisible ? 608 : 456);
+    };
+    addAndMakeVisible (advancedButton);
     addAndMakeVisible (topDivider1);
     addAndMakeVisible (topDivider2);
     addAndMakeVisible (leftColumn);
@@ -450,11 +507,45 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
     styleKnob (f1Knob.slider); styleLabel (f1Knob.label); f1Knob.label.setText ("F1", juce::dontSendNotification);
     styleKnob (f2Knob.slider); styleLabel (f2Knob.label); f2Knob.label.setText ("F2", juce::dontSendNotification);
     styleKnob (linkKnob.slider); styleLabel (linkKnob.label); linkKnob.label.setText ("LINK", juce::dontSendNotification);
+    styleKnob (balanceKnob.slider); styleLabel (balanceKnob.label); balanceKnob.label.setText ("UP/DN", juce::dontSendNotification);
     styleKnob (attackKnob.slider); styleLabel (attackKnob.label); attackKnob.label.setText ("ATTACK", juce::dontSendNotification);
     styleKnob (releaseKnob.slider); styleLabel (releaseKnob.label); releaseKnob.label.setText ("RELEASE", juce::dontSendNotification);
+    styleKnob (ceilingKnob.slider); styleLabel (ceilingKnob.label); ceilingKnob.label.setText ("CEIL", juce::dontSendNotification);
     styleKnob (lowGainKnob.slider); styleLabel (lowGainKnob.label); lowGainKnob.label.setText ("LOW G", juce::dontSendNotification);
     styleKnob (midGainKnob.slider); styleLabel (midGainKnob.label); midGainKnob.label.setText ("MID G", juce::dontSendNotification);
     styleKnob (highGainKnob.slider); styleLabel (highGainKnob.label); highGainKnob.label.setText ("HIGH G", juce::dontSendNotification);
+
+    f1Knob.slider.textFromValueFunction = [] (double value)
+    {
+        return juce::String ((int) std::round (value)) + " Hz";
+    };
+    f2Knob.slider.textFromValueFunction = [] (double value)
+    {
+        return value >= 1000.0 ? juce::String (value / 1000.0, 2) + " kHz"
+                               : juce::String ((int) std::round (value)) + " Hz";
+    };
+    linkKnob.slider.textFromValueFunction = [] (double value) { return juce::String (value, 0) + "%"; };
+    balanceKnob.slider.textFromValueFunction = [] (double value)
+    {
+        if (value < 45.0)
+            return "Down " + juce::String (value, 0) + "%";
+        if (value > 55.0)
+            return "Up " + juce::String (value, 0) + "%";
+        return juce::String ("Center");
+    };
+    attackKnob.slider.textFromValueFunction = [] (double value) { return juce::String (value, 2) + " ms"; };
+    releaseKnob.slider.textFromValueFunction = [] (double value) { return juce::String (value, 1) + " ms"; };
+    ceilingKnob.slider.textFromValueFunction = [] (double value) { return juce::String (value, 1) + " dB"; };
+    lowGainKnob.slider.textFromValueFunction = [] (double value) { return juce::String (value, 1) + " dB"; };
+    midGainKnob.slider.textFromValueFunction = [] (double value) { return juce::String (value, 1) + " dB"; };
+    highGainKnob.slider.textFromValueFunction = [] (double value) { return juce::String (value, 1) + " dB"; };
+
+    styleSectionLabel (advancedTitleLabel, 13.0f);
+    advancedTitleLabel.setText ("ADVANCED CONTROLS", juce::dontSendNotification);
+    styleSectionLabel (advancedDynamicsLabel, 11.0f);
+    advancedDynamicsLabel.setText ("Dynamics / Crossover", juce::dontSendNotification);
+    styleSectionLabel (advancedOutputLabel, 11.0f);
+    advancedOutputLabel.setText ("Output / Band Trim", juce::dontSendNotification);
 
     f1Knob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.getAPVTS(), "xover_f1_hz", f1Knob.slider);
@@ -462,10 +553,14 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
         audioProcessor.getAPVTS(), "xover_f2_hz", f2Knob.slider);
     linkKnob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.getAPVTS(), "stereo_link", linkKnob.slider);
+    balanceKnob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        audioProcessor.getAPVTS(), "updown_balance", balanceKnob.slider);
     attackKnob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.getAPVTS(), "attack_ms", attackKnob.slider);
     releaseKnob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.getAPVTS(), "release_ms", releaseKnob.slider);
+    ceilingKnob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        audioProcessor.getAPVTS(), "ceiling_db", ceilingKnob.slider);
     lowGainKnob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.getAPVTS(), "low_gain_db", lowGainKnob.slider);
     midGainKnob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
@@ -473,15 +568,18 @@ S3xtaOTTAudioProcessorEditor::S3xtaOTTAudioProcessorEditor (S3xtaOTTAudioProcess
     highGainKnob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.getAPVTS(), "high_gain_db", highGainKnob.slider);
 
-    for (auto* c : { &f1Knob, &f2Knob, &linkKnob, &attackKnob, &releaseKnob,
-                     &lowGainKnob, &midGainKnob, &highGainKnob })
+    for (auto* c : { &f1Knob, &f2Knob, &linkKnob, &balanceKnob, &attackKnob, &releaseKnob,
+                     &ceilingKnob, &lowGainKnob, &midGainKnob, &highGainKnob })
     {
         advancedPanel.addAndMakeVisible (c->slider);
         advancedPanel.addAndMakeVisible (c->label);
     }
+    advancedPanel.addAndMakeVisible (advancedTitleLabel);
+    advancedPanel.addAndMakeVisible (advancedDynamicsLabel);
+    advancedPanel.addAndMakeVisible (advancedOutputLabel);
 
     addAndMakeVisible (advancedPanel);
-    advancedPanel.setVisible (false);
+    advancedPanel.setVisible (advancedVisible);
 
     setSize (708, 456);
     startTimerHz (50);
@@ -525,6 +623,17 @@ void S3xtaOTTAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRoundedRectangle (leftLabelsBand, 4.0f);
     g.setColour (juce::Colour (0x34515e77));
     g.drawRoundedRectangle (leftLabelsBand, 4.0f, 1.0f);
+
+    if (advancedVisible)
+    {
+        auto advancedBounds = advancedPanel.getBounds().toFloat().expanded (4.0f, 4.0f);
+        juce::ColourGradient advancedGrad (juce::Colour (0x44233042), advancedBounds.getX(), advancedBounds.getY(),
+                                           juce::Colour (0x22151b27), advancedBounds.getRight(), advancedBounds.getBottom(), false);
+        g.setGradientFill (advancedGrad);
+        g.fillRoundedRectangle (advancedBounds, 6.0f);
+        g.setColour (juce::Colour (0x44515e77));
+        g.drawRoundedRectangle (advancedBounds, 6.0f, 1.0f);
+    }
 }
 
 void S3xtaOTTAudioProcessorEditor::resized()
@@ -596,17 +705,20 @@ void S3xtaOTTAudioProcessorEditor::resized()
         auto leftArea = leftColumn.getBounds().reduced (juce::jmax (3, w / 220), juce::jmax (6, h / 70));
         const int bandGap = juce::jmax (4, w / 190);
         const int labelHeight = juce::jmax (14, h / 30);
-        const int soloHeight = juce::jmax (16, h / 28);
+        const int buttonHeight = juce::jmax (16, h / 28);
+        const int buttonGap = juce::jmax (2, h / 180);
 
-        auto layoutBand = [labelHeight, soloHeight, h](juce::Rectangle<int> r, juce::Label& label,
-                                                    BipolarGRMeterComponent& meter, juce::ToggleButton& solo)
+        auto layoutBand = [labelHeight, buttonHeight, buttonGap, h](juce::Rectangle<int> r, juce::Label& label,
+                                                    BipolarGRMeterComponent& meter, juce::ToggleButton& solo, juce::ToggleButton& mute)
         {
             auto labelArea = r.removeFromTop (labelHeight);
             label.setBounds (labelArea);
 
-            auto meterArea = r.removeFromTop (juce::jmax (0, r.getHeight() - soloHeight));
+            auto meterArea = r.removeFromTop (juce::jmax (0, r.getHeight() - (buttonHeight * 2 + buttonGap)));
             meter.setBounds (meterArea.reduced (juce::jmax (3, h / 140), juce::jmax (3, h / 140)));
-            solo.setBounds (r.removeFromTop (soloHeight).reduced (2, 2));
+            solo.setBounds (r.removeFromTop (buttonHeight).reduced (2, 2));
+            r.removeFromTop (buttonGap);
+            mute.setBounds (r.removeFromTop (buttonHeight).reduced (2, 2));
         };
 
         const int bandWidth = (leftArea.getWidth() - (2 * bandGap)) / 3;
@@ -616,9 +728,9 @@ void S3xtaOTTAudioProcessorEditor::resized()
         leftArea.removeFromLeft (bandGap);
         auto highArea = leftArea;
 
-        layoutBand (lowArea, lowLabel, grLow, soloLow);
-        layoutBand (midArea, midLabel, grMid, soloMid);
-        layoutBand (highArea, highLabel, grHigh, soloHigh);
+        layoutBand (lowArea, lowLabel, grLow, soloLow, muteLow);
+        layoutBand (midArea, midLabel, grMid, soloMid, muteMid);
+        layoutBand (highArea, highLabel, grHigh, soloHigh, muteHigh);
     }
 
     // Center column: analyzer
@@ -639,24 +751,47 @@ void S3xtaOTTAudioProcessorEditor::resized()
     const int titleW = juce::jmax (130, w * 22 / 100);
     const int titleH = juce::jmax (34, h / 9);
     titleLabel.setBounds (getLocalBounds().withY (topLabelY).withHeight (titleH).withWidth (titleW).withX (w / 2 - titleW / 2));
+    const int utilityButtonHeight = juce::jmax (24, h / 18);
+    const int utilityButtonWidth = juce::jmax (104, w / 8);
+    const int utilityButtonGap = juce::jmax (6, w / 140);
+    const int utilityButtonY = topRow.getY() + juce::jmax (4, h / 80);
+    advancedButton.setBounds (w - pad - utilityButtonWidth, utilityButtonY, utilityButtonWidth, utilityButtonHeight);
+    softClipButton.setBounds (advancedButton.getX() - utilityButtonGap - utilityButtonWidth, utilityButtonY,
+                              utilityButtonWidth, utilityButtonHeight);
+    autoGainButton.setBounds (softClipButton.getX() - utilityButtonGap - utilityButtonWidth, utilityButtonY,
+                              utilityButtonWidth, utilityButtonHeight);
 
     if (advancedVisible)
     {
         layoutAdvancedPanel (advArea);
     }
+    else
+    {
+        advancedPanel.setBounds ({});
+    }
 }
 
 void S3xtaOTTAudioProcessorEditor::layoutAdvancedPanel (juce::Rectangle<int> area)
 {
-    advancedPanel.setBounds (area);
-    auto row1 = area.removeFromTop (juce::jmax (72, area.getHeight() * 45 / 100));
-    auto row2 = area;
+    advancedPanel.setBounds (area.reduced (juce::jmax (2, getWidth() / 220), juce::jmax (4, getHeight() / 120)));
+    auto content = advancedPanel.getLocalBounds().reduced (10, 10);
 
-    auto cell = row1.getWidth() / 5;
+    auto titleRow = content.removeFromTop (20);
+    advancedTitleLabel.setBounds (titleRow);
+    content.removeFromTop (4);
+
+    auto sectionLabelHeight = 18;
+    advancedDynamicsLabel.setBounds (content.removeFromTop (sectionLabelHeight));
+    auto row1 = content.removeFromTop (juce::jmax (72, content.getHeight() * 45 / 100));
+    content.removeFromTop (4);
+    advancedOutputLabel.setBounds (content.removeFromTop (sectionLabelHeight));
+    auto row2 = content;
+
+    auto cell = row1.getWidth() / 6;
     auto layoutKnobLocal = [](ParamKnob& knob, juce::Rectangle<int> r)
     {
         knob.label.setBounds (r.removeFromTop (18));
-        auto knobArea = r.reduced (8, 6);
+        auto knobArea = r.reduced (10, 6);
         knobArea = knobArea.reduced (knobArea.getWidth() / 10, knobArea.getHeight() / 10); // ~20% smaller
         knob.slider.setBounds (knobArea);
     };
@@ -664,26 +799,30 @@ void S3xtaOTTAudioProcessorEditor::layoutAdvancedPanel (juce::Rectangle<int> are
     layoutKnobLocal (f1Knob, row1.removeFromLeft (cell));
     layoutKnobLocal (f2Knob, row1.removeFromLeft (cell));
     layoutKnobLocal (linkKnob, row1.removeFromLeft (cell));
+    layoutKnobLocal (balanceKnob, row1.removeFromLeft (cell));
     layoutKnobLocal (attackKnob, row1.removeFromLeft (cell));
-    layoutKnobLocal (releaseKnob, row1.removeFromLeft (cell));
+    layoutKnobLocal (releaseKnob, row1);
 
-    auto cell2 = row2.getWidth() / 3;
+    auto cell2 = row2.getWidth() / 4;
+    layoutKnobLocal (ceilingKnob, row2.removeFromLeft (cell2));
     layoutKnobLocal (lowGainKnob, row2.removeFromLeft (cell2));
     layoutKnobLocal (midGainKnob, row2.removeFromLeft (cell2));
-    layoutKnobLocal (highGainKnob, row2.removeFromLeft (cell2));
+    layoutKnobLocal (highGainKnob, row2);
 }
 
 void S3xtaOTTAudioProcessorEditor::timerCallback()
 {
-    auto updateSolo = [](juce::ToggleButton& b)
+    auto updateBandButton = [] (juce::ToggleButton& b, juce::Colour activeColour)
     {
-        const auto active = b.getToggleState();
-        b.setColour (juce::ToggleButton::textColourId, active ? juce::Colour (0xfff1c15b) : juce::Colour (0xffbdbdbd));
+        b.setColour (juce::ToggleButton::textColourId, b.getToggleState() ? activeColour : juce::Colour (0xffbdbdbd));
     };
 
-    updateSolo (soloLow);
-    updateSolo (soloMid);
-    updateSolo (soloHigh);
+    updateBandButton (soloLow, juce::Colour (0xfff1c15b));
+    updateBandButton (soloMid, juce::Colour (0xfff1c15b));
+    updateBandButton (soloHigh, juce::Colour (0xfff1c15b));
+    updateBandButton (muteLow, juce::Colour (0xffd96aa5));
+    updateBandButton (muteMid, juce::Colour (0xffd96aa5));
+    updateBandButton (muteHigh, juce::Colour (0xffd96aa5));
 
     analyzer.updateData();
     analyzer.repaint();

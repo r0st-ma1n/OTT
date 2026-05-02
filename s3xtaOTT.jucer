@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="ORC2ln" name="s3xtaOTT" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1">
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1"
+              companyName="s3xta" companyWebsite="" companyEmail=""
+              pluginManufacturer="s3xta" bundleIdentifier="com.s3xta.s3xtaott">
   <MAINGROUP id="laK2Rx" name="s3xtaOTT">
     <GROUP id="{6182A79F-8D38-3656-F610-E9D9CEBC9303}" name="Source">
       <FILE id="ISmsab" name="PluginProcessor.cpp" compile="1" resource="0"
