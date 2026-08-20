@@ -1,6 +1,8 @@
 Builds/VisualStudio2026/.vs/
 Builds/VisualStudio2026/x64/
 Builds/VisualStudio2026/*.vcxproj.user
+/build/
+/tmp/
 
 *.pdb
 *.ilk
